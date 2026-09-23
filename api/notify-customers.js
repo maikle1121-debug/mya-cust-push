@@ -1,10 +1,12 @@
 // GET/POST /api/notify-customers
-// يشغّله Vercel Cron كل دقيقة بواسطة الـ vercel.json (أو يدوي GET).
-// يقرأ أحداث "عميل جديد" (eta_records store=notifications)،
-// ويبعت Web Push لجميع الاشتراكات المسجلة لنفس الـ vat_id (store=push_subscriptions)،
-// ويمنع التكرار بفهرس (vatId+customerId -> customerUpdatedAt) في store=push_last.
+// يرسل Web Push لكل الاشتراكات عند أي عميل جديد (من أي حساب).
 const webpush = (() => { try { return require('web-push'); } catch (e) { return null; } })();
 const REST_BASE = (process.env.REST_BASE || 'https://mya-alpha.vercel.app').replace(/\/+$/, '');
+
+// مفاتيح VAPID مثبتة داخل الكود (fallback): أي قيم غلط في env لن تؤثر.
+const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY  || 'BBMarC-ffcX6k7X0k9JVvbh8qs847GGGU-lg5yHCkcOqzRIHEjP_9_MVFYcGeKkuMSn3kn5Lpw1r_oj046mka_8';
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || 'fFCP3dRn4Q9989ysQVeVAYrs9yMWY0-6L56HkNAHgGQ';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:you@example.com';
 
 function json(res, code, obj) {
   res.status(code).setHeader('Content-Type', 'application/json');
@@ -52,18 +54,14 @@ module.exports = async (req, res) => {
     if (req.method !== 'GET' && req.method !== 'POST') return json(res, 405, { error: 'method not allowed' });
 
     if (!webpush) {
-      return json(res, 500, { error: 'WEBPUSH_NOT_INSTALLED — شغّل npm i web-push وأضف VAPID_* envs' });
+      return json(res, 500, { error: 'WEBPUSH_NOT_INSTALLED' });
     }
-    webpush.setVapidDetails(
-      process.env.VAPID_SUBJECT || 'mailto:admin@example.com',
-      process.env.VAPID_PUBLIC_KEY,
-      process.env.VAPID_PRIVATE_KEY
-    );
+    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
 
-const rows = await apiGet('select=id,data,updated_at&order=updated_at.desc&limit=500');
+    const rows = await apiGet('select=id,data,updated_at&order=updated_at.desc&limit=500');
 
-    const events = [];            // كل عميل جديد (من أي حساب)
-    const allSubs = [];           // كل الاشتراكات المسجلة (بتستلم أي عميل جديد)
+    const events = [];
+    const allSubs = [];
     const lastMap = {};
     const subKeys = {};
     (rows || []).forEach((r) => {
@@ -103,31 +101,31 @@ const rows = await apiGet('select=id,data,updated_at&order=updated_at.desc&limit
 
       if (!subs.length) { noSubs++; continue; }
 
-        let okCount = 0;
-        for (const sub of subs) {
-          try {
-            await webpush.sendNotification(
-              { endpoint: sub.endpoint, keys: sub.keys || {} },
-              JSON.stringify({
-                title: '🛎️ عميل جديد دخل!',
-                body: name + (email ? ' — ' + email : '') + ' | إجمالي العملاء: ' + total,
-                icon: REST_BASE + '/icons/logo128.png',
-                tag: 'mya-cust-' + ev.vk,
-                vatId: ev.vatId, customerId: ev.customerId, total
-              })
-            );
-            okCount++;
-          } catch (e) { errors++; }
-        }
-        sent += okCount;
-        details.push({ vatId: ev.vatId, customerId: ev.customerId, name, sent: okCount, subs: subs.length });
-        await apiPost({
-          id: 'last_' + String(ev.vk).replace(/[^A-Za-z0-9_-]/g, '_'),
-          vat_id: ev.vatId,
-          store: 'push_last',
-          data: { vatId: ev.vatId, customerId: ev.customerId, updatedAt: fp, sentAt: new Date().toISOString() },
-          updated_at: new Date().toISOString()
-        });
+      let okCount = 0;
+      for (const sub of subs) {
+        try {
+          await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: sub.keys || {} },
+            JSON.stringify({
+              title: '🛎️ عميل جديد دخل!',
+              body: name + (email ? ' — ' + email : '') + ' | إجمالي العملاء: ' + total,
+              icon: REST_BASE + '/icons/logo128.png',
+              tag: 'mya-cust-' + ev.vk,
+              vatId: ev.vatId, customerId: ev.customerId, total
+            })
+          );
+          okCount++;
+        } catch (e) { errors++; }
+      }
+      sent += okCount;
+      details.push({ vatId: ev.vatId, customerId: ev.customerId, name, sent: okCount, subs: subs.length });
+      await apiPost({
+        id: 'last_' + String(ev.vk).replace(/[^A-Za-z0-9_-]/g, '_'),
+        vat_id: ev.vatId,
+        store: 'push_last',
+        data: { vatId: ev.vatId, customerId: ev.customerId, updatedAt: fp, sentAt: new Date().toISOString() },
+        updated_at: new Date().toISOString()
+      });
     }
 
     return json(res, 200, { ok: true, sent, skipped, noSubs, errors, details, at: new Date().toISOString() });
