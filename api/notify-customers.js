@@ -1,12 +1,15 @@
 // GET/POST /api/notify-customers
 // يرسل Web Push لكل الاشتراكات عند أي عميل جديد (من أي حساب).
 const webpush = (() => { try { return require('web-push'); } catch (e) { return null; } })();
-const REST_BASE = (process.env.REST_BASE || 'https://mya-alpha.vercel.app').replace(/\/+$/, '');
 
-// مفاتيح VAPID مثبتة داخل الكود (fallback): أي قيم غلط في env لن تؤثر.
-const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY  || 'BBMarC-ffcX6k7X0k9JVvbh8qs847GGGU-lg5yHCkcOqzRIHEjP_9_MVFYcGeKkuMSn3kn5Lpw1r_oj046mka_8';
-const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || 'fFCP3dRn4Q9989ysQVeVAYrs9yMWY0-6L56HkNAHgGQ';
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:you@example.com';
+// رابط ومفتاح قاعدة البيانات مثبتان داخل الكود (مش من env).
+const REST_BASE = 'https://mya-alpha.vercel.app';
+const REST_APIKEY = 'sb_publishable_xQcMrCMwwggfAKggkxfYxQ_Ty0DbgRK';
+
+// مفاتيح VAPID مثبتة داخل الكود (أي قيم غلط في env لن تؤثر).
+const VAPID_PUBLIC  = 'BBMarC-ffcX6k7X0k9JVvbh8qs847GGGU-lg5yHCkcOqzRIHEjP_9_MVFYcGeKkuMSn3kn5Lpw1r_oj046mka_8';
+const VAPID_PRIVATE = 'fFCP3dRn4Q9989ysQVeVAYrs9yMWY0-6L56HkNAHgGQ';
+const VAPID_SUBJECT = 'mailto:you@example.com';
 
 function json(res, code, obj) {
   res.status(code).setHeader('Content-Type', 'application/json');
@@ -15,7 +18,7 @@ function json(res, code, obj) {
 
 async function apiGet(query) {
   const r = await fetch(REST_BASE + '/rest/v1/eta_records?' + query, {
-    headers: { 'apikey': process.env.REST_APIKEY, 'Content-Type': 'application/json' }
+    headers: { 'apikey': REST_APIKEY, 'Content-Type': 'application/json' }
   });
   if (!r.ok) throw new Error('rest ' + r.status);
   return await r.json();
@@ -25,7 +28,7 @@ async function apiPost(row) {
   await fetch(REST_BASE + '/rest/v1/eta_records?on_conflict=id', {
     method: 'POST',
     headers: {
-      'apikey': process.env.REST_APIKEY,
+      'apikey': REST_APIKEY,
       'Content-Type': 'application/json',
       'x-vat-id': row.vat_id || '',
       'Prefer': 'resolution=merge-duplicates,return=minimal'
