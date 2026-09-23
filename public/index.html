@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>إشعارات العملاء الجدد — MYA</title>
+  <style>
+    body { font-family: Cairo, Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 16px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 24px; max-width: 380px; width: 100%; box-shadow: 0 12px 30px rgba(0,0,0,.4); }
+    h1 { font-size: 19px; color: #fbbf24; margin: 0 0 8px; }
+    p { font-size: 13.5px; color: #cbd5e1; line-height: 1.6; margin: 0 0 16px; }
+    label { font-size: 13px; color: #94a3b8; display: block; margin: 0 0 6px; }
+    input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #475569; border-radius: 8px; background: #0f172a; color: #fff; font-size: 14px; margin-bottom: 14px; }
+    button { width: 100%; padding: 13px; border: 0; border-radius: 9px; background: #1d4ed8; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    #status { margin-top: 14px; font-size: 13px; color: #4ade80; white-space: pre-line; }
+    #status.err { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🛎️ إشعارات العملاء الجدد</h1>
+    <p>اضغط الزرار ده ليوصلك إشعار على الموبايل فور دخول <b>أي عميل جديد</b> — من أي حساب، حتى لو البرنامج مقفول.</p>
+    <p style="font-size:11.5px;color:#94a3b8;margin-top:-8px;">بدون ربط برقم رين معين — أي عميل/إيميل جديد هيعطيك إشعار.</p>
+    <button id="btn">اشترك في التنبيهات الآن</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const VAPID_PUBLIC = 'BBMarC-ffcX6k7X0k9JVvbh8qs847GGGU-lg5yHCkcOqzRIHEjP_9_MVFYcGeKkuMSn3kn5Lpw1r_oj046mka_8';
+    const $ = (id) => document.getElementById(id);
+    const statusBox = $('status');
+    const btn = $('btn');
+
+    function setStatus(text, err) {
+      statusBox.textContent = text;
+      statusBox.className = err ? 'err' : '';
+    }
+
+    function b64u(buf) {
+      return btoa(String.fromCharCode.apply(null, new Uint8Array(buf)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    async function subscribe() {
+      btn.disabled = true;
+      try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+          return setStatus('متصفحك لا يدعم إشعارات الدفع.\nجرّب Chrome أو Edge جوال.', true);
+        }
+        setStatus('بتسجيل الدخول للإشعارات...');
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') return setStatus('الإذن مرفوض.\nأفتح إعدادات الموقع وديل Allow.', true);
+
+        const reg = await navigator.serviceWorker.register('/sw-push.js');
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: b64u(
+            (() => {
+              const b64raw = VAPID_PUBLIC.replace(/-/g, '+').replace(/_/g, '/');
+              const bin = atob(b64raw);
+              const bytes = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+              return bytes;
+            })()
+          )
+        });
+
+        const resp = await fetch('/api/push-subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subscription: sub,
+            device: 'موبايلي ' + new Date().toLocaleDateString()
+          })
+        });
+        if (!resp.ok) {
+          const t = await resp.text();
+          throw new Error(t || ('HTTP ' + resp.status));
+        }
+        const out = await resp.json();
+        setStatus('تم الاشتراك بنجاح ✅\nأي عميل جديد — من أي حساب وفي أي وقت — هيوصلك إشعار حتى لو البرنامج مقفول.');
+      } catch (e) {
+        btn.disabled = false;
+        setStatus('حصل خطأ: ' + ((e && e.message) || e), true);
+      }
+    }
+
+    btn.addEventListener('click', subscribe);
+  </script>
+</body>
+</html>
