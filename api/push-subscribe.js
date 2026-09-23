@@ -1,8 +1,11 @@
 // POST /api/push-subscribe
 // Body: { subscription } أو { vatId, subscription } — الـ vatId اختياري الآن.
-// الاشتراك هنا "عالمي" تقصدي: أي عميل جديد من أي حساب هيوصله إشعار.
+// الاشتراك هنا "عالمي": أي عميل جديد من أي حساب هيوصله إشعار.
 const crypto = require('crypto');
-const REST_BASE = (process.env.REST_BASE || 'https://mya-alpha.vercel.app').replace(/\/+$/, '');
+
+// رابط ومفتاح قاعدة البيانات مثبتان داخل الكود (مش من env).
+const REST_BASE = 'https://mya-alpha.vercel.app';
+const REST_APIKEY = 'sb_publishable_xQcMrCMwwggfAKggkxfYxQ_Ty0DbgRK';
 
 function json(res, code, obj) {
   res.status(code).setHeader('Content-Type', 'application/json');
@@ -50,7 +53,7 @@ module.exports = async (req, res) => {
     const fetchRes = await fetch(REST_BASE + '/rest/v1/eta_records?on_conflict=id', {
       method: 'POST',
       headers: {
-        'apikey': process.env.REST_APIKEY,
+        'apikey': REST_APIKEY,
         'Content-Type': 'application/json',
         'x-vat-id': vatId || 'global',
         'Prefer': 'resolution=merge-duplicates,return=minimal'
